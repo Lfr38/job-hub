@@ -1,8 +1,5 @@
 #!/bin/bash
-# Full job pipeline: LinkedIn scrape → heuristic filter → AI evaluation
-# Runs as no_agent cron job — output is sent to user verbatim.
-# Silent when nothing new (watchdog pattern).
-
+# Full job pipeline: all sources → filter → AI eval → email
 set -e
 cd /mnt/code/WorkResearch
 source venv/bin/activate
@@ -10,8 +7,26 @@ source venv/bin/activate
 echo "🤖 Job Pipeline — $(date '+%d/%m/%Y %H:%M')"
 echo ""
 
-# ── Step 1: LinkedIn scrape ──
-echo "─── Step 1: LinkedIn Scrape ───"
+# ── Step 1: Remotive API ──
+echo "─── Step 1: Remotive API ───"
+python -c "
+import sys; sys.path.insert(0, 'execution')
+from ingest_remotive import run as r; r()
+" 2>&1 | grep -v "Starting\|Database ready\|^$"
+
+echo ""
+
+# ── Step 2: Arbeitnow API ──
+echo "─── Step 2: Arbeitnow API ───"
+python -c "
+import sys; sys.path.insert(0, 'execution')
+from ingest_arbeitnow import run as a; a()
+" 2>&1 | grep -v "Starting\|Database ready\|^$"
+
+echo ""
+
+# ── Step 3: LinkedIn scrape ──
+echo "─── Step 3: LinkedIn Scrape ───"
 python execution/ingest_linkedin.py \
   --keywords "guardia giurata,cybersecurity,sicurezza informatica,vigilanza,portierato,soc analyst,junior security,IT security,penetration testing" \
   --locations "Brescia,Italy" \
@@ -19,8 +34,8 @@ python execution/ingest_linkedin.py \
 
 echo ""
 
-# ── Step 2: Heuristic filter ──
-echo "─── Step 2: Heuristic Filter ───"
+# ── Step 4: Heuristic filter (su TUTTI i job nuovi) ──
+echo "─── Step 4: Heuristic Filter ───"
 python -c "
 import sys; sys.path.insert(0, 'execution')
 from heuristic_filter import run_filters; run_filters()
@@ -28,8 +43,8 @@ from heuristic_filter import run_filters; run_filters()
 
 echo ""
 
-# ── Step 3: AI evaluation ──
-echo "─── Step 3: AI Evaluation ───"
+# ── Step 5: AI evaluation (su TUTTI i filtered_pass) ──
+echo "─── Step 5: AI Evaluation ───"
 python -c "
 import sys; sys.path.insert(0, 'execution')
 from llm_evaluator import run_evaluation; run_evaluation()
@@ -37,17 +52,21 @@ from llm_evaluator import run_evaluation; run_evaluation()
 
 echo ""
 
-# ── Summary ──
+# ── Step 6: Email notification ──
+echo "─── Step 6: Email Notification ───"
+export EMAIL_PASSWORD="CHANGE_ME"
+python execution/email_notifier.py 2>&1
+
+echo ""
+echo "✅ Pipeline completata — $(date '+%d/%m/%Y %H:%M')"
+
+# Stats finali
 python -c "
 import sys; sys.path.insert(0, 'execution')
 import sqlite3
 conn = sqlite3.connect('.tmp/jobs.db')
 aipass = conn.execute('SELECT COUNT(*) FROM jobs WHERE status=\"ai_pass\"').fetchone()[0]
-aireject = conn.execute('SELECT COUNT(*) FROM jobs WHERE status=\"ai_reject\"').fetchone()[0]
 total = conn.execute('SELECT COUNT(*) FROM jobs').fetchone()[0]
-print(f'📊 Totale DB: {total} — ✅ Pass: {aipass} — ❌ Reject: {aireject}')
 conn.close()
+print(f'📊 DB: {total} job — ✅ AI Pass: {aipass}')
 "
-
-echo ""
-echo "✅ Pipeline completata"
