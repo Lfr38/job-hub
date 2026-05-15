@@ -1,0 +1,148 @@
+# ═══════════════════════════════════════════════
+# Job Search Configuration
+# Modifica questo file per cambiare filtri e parametri
+# ═══════════════════════════════════════════════
+
+ai:
+  provider: groq  # Opzioni: gemini | deepseek | claude | openai | groq
+  # Il modello e la chiave API si leggono da .env
+  # deepseek: DEEPSEEK_API_KEY
+  # gemini: GOOGLE_API_KEY
+  # claude: ANTHROPIC_API_KEY
+  # openai: OPENAI_API_KEY
+
+search:
+  # Ruoli che cerchiamo (match sul titolo dell'annuncio)
+  target_roles:
+    - cybersecurity
+    - security analyst
+    - security engineer
+    - penetration tester
+    - soc analyst
+    - python developer
+    - python programmer
+    - ai developer
+    - ai engineer
+    - machine learning
+    - backend developer
+    - full stack developer
+    - it support
+    - help desk
+    - technical support
+
+  # Keyword richieste (match su titolo + descrizione)
+  required_keywords:
+    - python
+    - cybersecurity
+    - security
+    - ai
+    - artificial intelligence
+    - machine learning
+    - django
+    - fastapi
+
+  # Keyword da escludere (match su titolo + descrizione)
+  negative_keywords:
+    - senior
+    - lead
+    - principal
+    - staff
+    - manager
+    - director
+    - head of
+    - 5+ years
+    - 10+ years
+    - 7+ years
+    - 8+ years
+
+  # Filtri part-time
+  part_time:
+    required: false               # Soft filter: bonus se menzionato, non blocca
+    keywords:                     # Keyword che segnalano part-time
+      - part-time
+      - part time
+      - parttime
+      - mezza giornata
+      - part time (20h)
+      - 20 hours
+      - 25 hours
+      - 30 hours
+      - 4 hour
+      - 4-hour
+      - half day
+
+  # Filtri remote/posizione
+  remote:
+    required: false               # Soft filter: bonus se remoto, non blocca
+    keywords:                     # Keyword che indicano remote
+      - remote
+      - fully remote
+      - work from home
+      - anywhere
+      - worldwide
+      - 100% remote
+      - fully remote
+      - remoto
+      - da remoto
+      - smart working
+
+  # Ricerca locale (Brescia e dintorni)
+  local:
+    enabled: true
+    location: Brescia
+    radius_km: 30
+    roles:
+      - guardia notturna
+      - portierato
+      - portiere
+      - vigilanza
+      - sorveglianza
+      - custode
+      - receptionist notturno
+      - addetto alla sicurezza
+      - operatore di vigilanza
+    keywords:
+      - brescia
+      - bresciano
+      - garda
+      - valsabbia
+      - in zona
+      - provincia di brescia
+      - brescia area
+
+scoring:
+  # Punteggi per il filtro euristico
+  title_match: 30          # Punti se il titolo contiene un ruolo target
+  keyword_match: 10        # Punti per ogni keyword trovata
+  remote_bonus: 20         # Bonus se menziona remote
+  part_time_bonus: 25      # Bonus se menziona part-time
+  local_bonus: 15          # Bonus per annunci in zona Brescia
+  ai_pass_threshold: 25    # Soglia per passare all'AI (più bassa = più candidati all'AI)
+
+sources:
+  remotive:
+    enabled: true
+    category: software-dev
+    api_url: "https://remotive.com/api/remote-jobs"
+  arbeitnow:
+    enabled: true
+    api_url: "https://www.arbeitnow.com/api/job-board-api"
+  custom_scraper:
+    enabled: false  # Rate-limited, riabilitare quando l'IP si libera
+    # Scrapes it.trabajo.org (free, no API key needed)
+    rate_limit_delay: 3  # seconds between requests
+  linkedin:
+    enabled: true
+    max_pages: 2          # Pages per keyword (max ~60 jobs per page)
+    keywords:
+      - cybersecurity
+      - sicurezza informatica
+      - soc analyst
+      - junior security
+      - IT security
+      - guardia giurata
+      - portierato
+      - vigilanza
+      - penetration testing
+    # tinyfish:  # Da abilitare quando serve LinkedIn/Indeed
+  #   enabled: false
