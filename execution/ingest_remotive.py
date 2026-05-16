@@ -152,6 +152,7 @@ def is_part_time_job(job_type: str, title: str, description: str) -> bool:
 
 def run() -> None:
     """Main execution block"""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger.info("Starting Remotive ingestion...")
     initialize_db()
     jobs = fetch_jobs()

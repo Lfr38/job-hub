@@ -121,6 +121,7 @@ def process_jobs(jobs: List[Dict[str, Any]]) -> int:
 
 def run() -> None:
     """Main execution block"""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger.info("Starting Arbeitnow ingestion...")
     initialize_db()
     jobs = fetch_jobs()

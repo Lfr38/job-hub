@@ -57,8 +57,8 @@ def load_cookies(path=COOKIES_FILE):
 def get_job_urls(page, keyword, location):
     """Extract unique job URLs from LinkedIn search results page."""
     try:
-        page.wait_for_selector('a[href*="/jobs/view/"]', timeout=15000)
-        time.sleep(2)
+        page.wait_for_selector('a[href*="/jobs/view/"]', timeout=10000)
+        time.sleep(1)
         
         urls = page.evaluate('''() => {
             const links = document.querySelectorAll('a[href*="/jobs/view/"]');
@@ -81,8 +81,8 @@ def get_job_urls(page, keyword, location):
 def extract_job_from_page(page, url):
     """Navigate to a single job page and extract all details."""
     try:
-        page.goto(url, wait_until='domcontentloaded', timeout=20000)
-        time.sleep(1.5)
+        page.goto(url, wait_until='domcontentloaded', timeout=15000)
+        time.sleep(1)
         
         info = page.evaluate('''() => {
             const g = (sel) => {
@@ -124,7 +124,7 @@ def extract_job_from_page(page, url):
 
 
 def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1, 
-                    max_jobs=15, dry_run=False):
+                    max_jobs=8, max_total=30, dry_run=False):
     """Main scraper with authentication."""
     if keywords is None:
         keywords = DEFAULT_KEYWORDS
@@ -133,88 +133,150 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
     
     all_jobs = []
     seen_urls = set()
+    total_new = 0
+    iter_count = 0
+    MAX_ITER_PER_BROWSER = 5  # Restart browser every N keyword×location iterations
     
-    logger.info(f"🔍 LinkedIn Auth Scraper — {len(keywords)} keywords")
-    logger.info(f"   Keyword: {', '.join(keywords[:5])}{'...' if len(keywords) > 5 else ''}")
-    logger.info(f"   Location: {', '.join(locations)}")
+    logger.info(f"🔍 LinkedIn Auth Scraper — {len(keywords)} keywords × {len(locations)} locations")
+    logger.info(f"   Keywords: {', '.join(keywords[:5])}{'...' if len(keywords) > 5 else ''}")
+    logger.info(f"   Max: {max_jobs} job/keyword | Totale max: {max_total}")
+    logger.info(f"   Browser restart ogni {MAX_ITER_PER_BROWSER} iterazioni")
     
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox']
-        )
-        context = browser.new_context(
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
-            viewport={'width': 1920, 'height': 1080},
-            locale='it-IT',
-        )
-        context.add_cookies(cookies)
+    for keyword in keywords:
+        if total_new >= max_total:
+            logger.info(f"🏁 Raggiunto limite di {max_total} job — fermo")
+            break
         
-        page = context.new_page()
-        
-        for keyword in keywords:
-            for location in locations:
-                # Raccolta URL dalla pagina di ricerca
-                search_url = f"https://www.linkedin.com/jobs/search/?keywords={keyword.replace(' ', '%20')}&location={location.replace(' ', '%20')}&position=1&pageNum=0"
-                
-                logger.info(f"🔎 [{keyword}] @ {location}")
-                
-                try:
-                    page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
-                    time.sleep(2)
-                    
-                    # Rifiuta cookie se compaiono
+        for location in locations:
+            if total_new >= max_total:
+                break
+            
+            iter_count += 1
+            
+            # Riavvia browser ogni MAX_ITER_PER_BROWSER iterazioni
+            if iter_count % MAX_ITER_PER_BROWSER == 1:
+                if iter_count > 1:
+                    logger.info(f"🔄 Riavvio browser (iterazione {iter_count})...")
                     try:
-                        reject = page.query_selector('button:has-text("Rifiuta")')
-                        if reject and reject.is_visible():
-                            reject.click()
-                            time.sleep(0.5)
+                        page.close()
+                        browser.close()
                     except:
                         pass
-                    
-                    urls = get_job_urls(page, keyword, location)
-                    
-                    # Filtra già visti
-                    new_urls = [u for u in urls if u not in seen_urls]
-                    for u in new_urls:
-                        seen_urls.add(u)
-                    
-                    logger.info(f"   {len(urls)} job trovati, {len(new_urls)} nuovi")
-                    
-                    # Estrai dettagli dai primi N job
-                    to_extract = new_urls[:max_jobs]
-                    for idx, job_url in enumerate(to_extract):
+                # Avvia nuovo browser
+                p = sync_playwright().start()
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+                )
+                context = browser.new_context(
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='it-IT',
+                )
+                context.add_cookies(cookies)
+                page = context.new_page()
+            
+            # Raccolta URL dalla pagina di ricerca
+            search_url = f"https://www.linkedin.com/jobs/search/?keywords={keyword.replace(' ', '%20')}&location={location.replace(' ', '%20')}&position=1&pageNum=0"
+            
+            logger.info(f"🔎 [{keyword}] @ {location}")
+            
+            try:
+                page.goto(search_url, wait_until='domcontentloaded', timeout=15000)
+                time.sleep(1)
+                
+                # Rifiuta cookie se compaiono
+                try:
+                    reject = page.query_selector('button:has-text("Rifiuta")')
+                    if reject and reject.is_visible():
+                        reject.click()
+                        time.sleep(0.3)
+                except:
+                    pass
+                
+                urls = get_job_urls(page, keyword, location)
+                
+                # Filtra già visti
+                new_urls = [u for u in urls if u not in seen_urls]
+                for u in new_urls:
+                    seen_urls.add(u)
+                
+                logger.info(f"   {len(urls)} job trovati, {len(new_urls)} nuovi")
+                
+                # Estrai dettagli dai primi N job (rispetta il limite totale)
+                remaining = max_total - total_new
+                to_extract = new_urls[:min(max_jobs, remaining)]
+                for idx, job_url in enumerate(to_extract):
+                    try:
                         data = extract_job_from_page(page, job_url)
                         if not data:
                             continue
-                        
-                        # Pulisci località (formato LinkedIn: "Brescia, Lombardia · 2 settimane fa")
-                        loc_raw = data.get('location', '')
-                        loc_clean = loc_raw.split('·')[0].strip() if '·' in loc_raw else loc_raw
-                        
-                        job_entry = {
-                            'title': data.get('title', ''),
-                            'company': data.get('company', ''),
-                            'location': loc_clean,
-                            'description': data.get('desc', ''),
-                            'salary': data.get('salary', ''),
-                            'url': job_url,
-                            'keyword': keyword,
-                            'search_location': location,
-                            'source': 'linkedin',
-                        }
-                        all_jobs.append(job_entry)
-                        
-                        if (idx + 1) % 5 == 0:
-                            logger.info(f"   ... {idx+1}/{len(to_extract)}")
-                
-                except Exception as e:
-                    logger.warning(f"   ⚠️ Errore: {e}")
-                
-                time.sleep(0.5)
-        
+                    except Exception as e:
+                        # Se il browser crashat, riavvia e riprova
+                        if 'EPIPE' in str(e) or 'Target closed' in str(e):
+                            logger.warning(f"   ⚠️ Browser crash — riavvio...")
+                            try:
+                                page.close()
+                                browser.close()
+                            except:
+                                pass
+                            p = sync_playwright().start()
+                            browser = p.chromium.launch(
+                                headless=True,
+                                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+                            )
+                            context = browser.new_context(
+                                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+                                viewport={'width': 1920, 'height': 1080},
+                                locale='it-IT',
+                            )
+                            context.add_cookies(cookies)
+                            page = context.new_page()
+                            # Riprova
+                            try:
+                                data = extract_job_from_page(page, job_url)
+                                if not data:
+                                    continue
+                            except Exception as e2:
+                                logger.warning(f"   ⚠️ Riprovato fallito: {e2}")
+                                continue
+                        else:
+                            logger.debug(f"   Errore estrazione: {e}")
+                            continue
+                    
+                    # Pulisci località (formato LinkedIn: "Brescia, Lombardia · 2 settimane fa")
+                    loc_raw = data.get('location', '')
+                    loc_clean = loc_raw.split('·')[0].strip() if '·' in loc_raw else loc_raw
+                    
+                    job_entry = {
+                        'title': data.get('title', ''),
+                        'company': data.get('company', ''),
+                        'location': loc_clean,
+                        'description': data.get('desc', ''),
+                        'salary': data.get('salary', ''),
+                        'url': job_url,
+                        'keyword': keyword,
+                        'search_location': location,
+                        'source': 'linkedin',
+                    }
+                    all_jobs.append(job_entry)
+                    total_new += 1
+                    
+                    if (idx + 1) % 5 == 0:
+                        logger.info(f"   ... {idx+1}/{len(to_extract)}")
+            
+            except Exception as e:
+                logger.warning(f"   ⚠️ Errore: {e}")
+            
+            time.sleep(0.3)
+    
+    # Chiudi browser finale
+    try:
         page.close()
         browser.close()
+        p.stop()
+    except:
+        pass
     
     logger.info(f"\n📊 TOTALE: {len(all_jobs)} job unici estratti")
     return all_jobs
@@ -262,7 +324,8 @@ def main():
     parser.add_argument('--keywords', type=str, help='Comma-separated keywords')
     parser.add_argument('--locations', type=str, default='Brescia,Italy',
                         help='Comma-separated locations')
-    parser.add_argument('--max-jobs', type=int, default=15, help='Max jobs to extract')
+    parser.add_argument('--max-jobs', type=int, default=8, help='Max jobs to extract per keyword/location')
+    parser.add_argument('--max-total', type=int, default=30, help='Global max jobs to collect across all searches')
     parser.add_argument('--dry-run', action='store_true', help='Print without saving')
     parser.add_argument('--cookies', type=str, default=COOKIES_FILE)
     args = parser.parse_args()
@@ -281,7 +344,7 @@ def main():
     
     jobs = scrape_linkedin(
         cookies=cookies, keywords=keywords, locations=locations,
-        max_jobs=args.max_jobs, dry_run=args.dry_run
+        max_jobs=args.max_jobs, max_total=args.max_total, dry_run=args.dry_run
     )
     
     if not args.dry_run and jobs:

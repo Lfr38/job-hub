@@ -12,7 +12,7 @@ echo "─── Step 1: Remotive API ───"
 python -c "
 import sys; sys.path.insert(0, 'execution')
 from ingest_remotive import run as r; r()
-" 2>&1 | grep -v "Starting\|Database ready\|^$"
+" 2>&1 | grep -v "Starting\|Database ready\|^$" || true
 
 echo ""
 
@@ -21,7 +21,7 @@ echo "─── Step 2: Arbeitnow API ───"
 python -c "
 import sys; sys.path.insert(0, 'execution')
 from ingest_arbeitnow import run as a; a()
-" 2>&1 | grep -v "Starting\|Database ready\|^$"
+" 2>&1 | grep -v "Starting\|Database ready\|^$" || true
 
 echo ""
 
@@ -30,7 +30,7 @@ echo "─── Step 3: LinkedIn Scrape ───"
 python execution/ingest_linkedin.py \
   --keywords "guardia giurata,cybersecurity,sicurezza informatica,vigilanza,portierato,soc analyst,junior security,IT security,penetration testing" \
   --locations "Brescia,Italy" \
-  --max-jobs 12 2>&1
+  --max-jobs 8 --max-total 30 2>&1
 
 echo ""
 
