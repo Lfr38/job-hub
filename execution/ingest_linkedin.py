@@ -84,6 +84,12 @@ def extract_job_from_page(page, url):
         page.goto(url, wait_until='domcontentloaded', timeout=15000)
         time.sleep(1)
         
+        # Se LinkedIn mostra la pagina di login/signup, skippa
+        page_text = page.evaluate("document.body.innerText.substring(0, 200)")
+        if 'Iscriviti a LinkedIn' in page_text or 'Iscriviti' in page_text[:100]:
+            logger.debug(f"   ⏭ Pagina login per {url.split('/')[-1][:30]}")
+            return None
+        
         info = page.evaluate('''() => {
             const g = (sel) => {
                 const el = document.querySelector(sel);
