@@ -142,6 +142,9 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
     logger.info(f"   Max: {max_jobs} job/keyword | Totale max: {max_total}")
     logger.info(f"   Browser restart ogni {MAX_ITER_PER_BROWSER} iterazioni")
     
+    # Avvia Playwright UNA SOLA VOLTA (non si può chiamare sync_playwright().start() due volte)
+    _pw = sync_playwright().start()
+    
     for keyword in keywords:
         if total_new >= max_total:
             logger.info(f"🏁 Raggiunto limite di {max_total} job — fermo")
@@ -162,9 +165,8 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
                         browser.close()
                     except:
                         pass
-                # Avvia nuovo browser
-                p = sync_playwright().start()
-                browser = p.chromium.launch(
+                # Avvia nuovo browser (riusa _pw, non chiamare sync_playwright().start() di nuovo!)
+                browser = _pw.chromium.launch(
                     headless=True,
                     args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 )
@@ -220,8 +222,7 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
                                 browser.close()
                             except:
                                 pass
-                            p = sync_playwright().start()
-                            browser = p.chromium.launch(
+                            browser = _pw.chromium.launch(
                                 headless=True,
                                 args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                             )
@@ -274,7 +275,7 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
     try:
         page.close()
         browser.close()
-        p.stop()
+        _pw.stop()
     except:
         pass
     
