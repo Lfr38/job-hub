@@ -79,11 +79,27 @@ Company: {job['company']}
 Description:
 {job['description']}
 
-**Evaluation criteria (return ONLY valid JSON):**
-1. How well does this match Simone's skills and career path? (0-30 points)
+**IMPORTANT — These rules apply to ALL jobs regardless of source (LinkedIn, Remotive, Arbeitnow, etc.).**
+
+**Language:** The job description may be in Italian, English, German, or other languages. Do NOT penalize or discard a job based on language alone — Simone has B2 English and can work in English-speaking environments.
+
+**CRITICAL RULES — Location & Role Type:**
+
+Rule A — Portierato/Vigilanza (local security/porter roles):
+If the title contains "portierato", "vigilanza", "guardia", "portiere", "custode", "sorveglianza":
+  → The location MUST be Brescia or nearby (provincia di Brescia, BS area).
+  → If NOT Brescia province, set score=0 with fit_reason="Ruolo locale non IT — fuori area Brescia".
+
+Rule B — IT / Cybersecurity / Technical roles (everything else):
+  → Remote across all Italy or abroad is IDEAL.
+  → On-site in Italy is acceptable but scores lower on remote criterion.
+  → On-site abroad is penalized unless exceptional.
+
+**Scoring (0-100 total):**
+1. Match with Simone's skills and career path (0-30 points)
 2. Is the role truly junior/entry-level friendly? (0-20 points)
-3. Is it clearly part-time? (0-25 points)
-4. Is it truly remote/worldwide? (0-15 points)
+3. Part-time: clearly part-time = 0-25 points | not part-time or unspecified = 0-5 points (0-25 points)
+4. Remote: full remote worldwide = 15pt, remote Italy = 10pt, on-site Italy = 0-5pt, on-site abroad = 0pt (0-15 points)
 5. No red flags (ambiguous, scammy, too good to be true) (0-10 points)
 
 Return ONLY a valid JSON object:
@@ -93,7 +109,9 @@ Return ONLY a valid JSON object:
   "cons": ["list of 1-3 specific cons for Simone"],
   "summary": "<1-sentence summary>",
   "fit_reason": "<why this fits Simone or doesn't>"
-}}"""
+}}
+"""
+
     return prompt
 
 
@@ -247,7 +265,7 @@ def update_job_evaluation(system_id: str, evaluation: Dict[str, Any]) -> None:
     """Updates the database with the LLM's evaluation."""
     score = evaluation.get('score', 0)
     eval_text = json.dumps(evaluation)
-    status = "ai_pass" if score >= 60 else "ai_reject"
+    status = "ai_pass" if score >= 40 else "ai_reject"
 
     update_job(system_id, llm_score=score, llm_evaluation=eval_text, status=status)
 

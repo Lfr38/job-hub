@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from config_loader import load_config
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '.tmp', 'jobs.db')
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.tmp', 'jobs.db')
 
 # Thresholds
-MIN_SCORE = 60  # Min score to notify
+MIN_SCORE = 40  # Min score to notify
 LOOKBACK_HOURS = 8  # Check jobs from last N hours
 
 
