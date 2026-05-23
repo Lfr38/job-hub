@@ -265,7 +265,7 @@ def update_job_evaluation(system_id: str, evaluation: Dict[str, Any]) -> None:
     """Updates the database with the LLM's evaluation."""
     score = evaluation.get('score', 0)
     eval_text = json.dumps(evaluation)
-    status = "ai_pass" if score >= 40 else "ai_reject"
+    status = "ai_pass" if score >= 60 else "ai_reject"
 
     update_job(system_id, llm_score=score, llm_evaluation=eval_text, status=status)
 
