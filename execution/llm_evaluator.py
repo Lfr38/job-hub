@@ -70,7 +70,8 @@ def build_evaluation_prompt(job: Dict[str, Any]) -> str:
 - Skills: Python, Django, Node.js, Linux, Active Directory, pfSense, networking
 - Languages: Italian (native), English (B2)
 - Seeking: Entry-level / junior positions
-- Looking for: PART-TIME and REMOTE positions
+- Open to: part-time (ideal), full-time (also fine if other criteria are strong)
+- Interests: Cybersecurity, AI/vibe coding, Python/automation development
 
 **Job to evaluate:**
 Title: {job['title']}
@@ -81,7 +82,7 @@ Description:
 
 **IMPORTANT — These rules apply to ALL jobs regardless of source (LinkedIn, Remotive, Arbeitnow, etc.).**
 
-**Language:** The job description may be in Italian, English, German, or other languages. Do NOT penalize or discard a job based on language alone — Simone has B2 English and can work in English-speaking environments.
+**Language:** The job may be in Italian, English, German, or other languages. Do NOT penalize based on language — Simone has B2 English.
 
 **CRITICAL RULES — Location & Role Type:**
 
@@ -95,12 +96,38 @@ Rule B — IT / Cybersecurity / Technical roles (everything else):
   → On-site in Italy is acceptable but scores lower on remote criterion.
   → On-site abroad is penalized unless exceptional.
 
-**Scoring (0-100 total):**
-1. Match with Simone's skills and career path (0-30 points)
-2. Is the role truly junior/entry-level friendly? (0-20 points)
-3. Part-time: clearly part-time = 0-25 points | not part-time or unspecified = 0-5 points (0-25 points)
-4. Remote: full remote worldwide = 15pt, remote Italy = 10pt, on-site Italy = 0-5pt, on-site abroad = 0pt (0-15 points)
-5. No red flags (ambiguous, scammy, too good to be true) (0-10 points)
+**Scoring (0-100 total) — follow this guide carefully:**
+
+1. Career match (0-20 points)
+   Cybersecurity, AI/vibe coding, Python/AI development → 15-20
+   IT Support, networking, sysadmin → 8-14
+   Other fields → 0-7
+
+2. Entry-level / junior friendly (0-15 points)
+   Is it truly for juniors, trainees, or interns? Score accordingly.
+
+3. Remote work (0-15 points)
+   Full remote worldwide → 12-15
+   Remote Italy / hybrid Italy → 8-11
+   On-site Italy → 4-7
+   On-site abroad → 0-3
+
+4. Part-time factor (THIS IS THE KEY DIFFERENTIATOR — sets the ceiling):
+   Clearly part-time documented (+30 to +35) — this job can reach 90-100 total
+   Not specified or unclear (+15 to +20) — realistic maximum around 70-75
+   Clearly full-time (+5 to +10) — realistic maximum around 55-65
+
+5. Language bonus (0-10 points)
+   Job is in Italian or English → bonus (Simone is comfortable in both)
+   Other language only → no bonus (but no penalty)
+
+6. Red flags: subtract 0-10 if listing is ambiguous, scammy, or unrealistic
+
+**REALISTIC MAXIMUMS by work schedule (use these as a sanity check):**
+- Part-time job, strong in all criteria → 90-100
+- Part-time not specified, strong in other criteria → 65-75
+- Full-time, strong in other criteria → 55-65
+- Poor match → 0-40
 
 Return ONLY a valid JSON object:
 {{
