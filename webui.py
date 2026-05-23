@@ -255,9 +255,22 @@ body{
     <a href="{{ url_for('dashboard', status='today') }}" class="{% if current_status == 'today' %}active{% endif %}" style="border-color:var(--yellow)">📅 Today</a>
   </div>
 
+  <!-- Score filters -->
+  {% if current_status == 'ai_pass' or min_score > 0 %}
+  <div class="filters" style="margin-top:4px">
+    <span style="font-size:11px;color:var(--text-dim);align-self:center;margin-right:4px">Score:</span>
+    <a href="{{ url_for('dashboard', status='ai_pass', min_score='') }}" class="{% if min_score == 0 %}active{% endif %}" style="border-color:var(--green)">All</a>
+    <a href="{{ url_for('dashboard', status='ai_pass', min_score='70') }}" class="{% if min_score == 70 %}active{% endif %}" style="border-color:var(--green)">≥70</a>
+    <a href="{{ url_for('dashboard', status='ai_pass', min_score='60') }}" class="{% if min_score == 60 %}active{% endif %}" style="border-color:var(--green)">≥60</a>
+    <a href="{{ url_for('dashboard', status='ai_pass', min_score='50') }}" class="{% if min_score == 50 %}active{% endif %}" style="border-color:var(--green)">≥50</a>
+    <a href="{{ url_for('dashboard', status='ai_pass', min_score='40') }}" class="{% if min_score == 40 %}active{% endif %}" style="border-color:var(--green)">≥40</a>
+  </div>
+  {% endif %}
+
   <!-- Search -->
   <form class="search-bar" method="GET" action="{{ url_for('dashboard') }}">
     <input type="hidden" name="status" value="{{ current_status }}">
+    {% if min_score > 0 %}<input type="hidden" name="min_score" value="{{ min_score }}">{% endif %}
     <input type="text" name="search" value="{{ search_query }}" placeholder="Search title, company, keyword…">
     <button type="submit">🔍 Search</button>
   </form>
@@ -344,7 +357,7 @@ body{
   {% if total_pages > 1 %}
   <div class="pagination">
     {% for p in range(1, total_pages + 1) %}
-    <a href="{{ url_for('dashboard', status=current_status, search=search_query, page=p) }}" class="{% if p == page %}active{% endif %}">{{ p }}</a>
+    <a href="{{ url_for('dashboard', status=current_status, search=search_query, page=p, min_score=min_score if min_score > 0 else '') }}" class="{% if p == page %}active{% endif %}">{{ p }}</a>
     {% endfor %}
   </div>
   {% endif %}
@@ -504,6 +517,8 @@ def get_filter_links(current_status, search_query, stats):
 def dashboard():
     status_filter = request.args.get('status', '')
     search_query = request.args.get('search', '').strip()
+    min_score = request.args.get('min_score', '')
+    min_score = int(min_score) if min_score.isdigit() else 0
     page = int(request.args.get('page', 1))
     per_page = 30
     offset = (page - 1) * per_page
@@ -518,6 +533,9 @@ def dashboard():
     elif status_filter:
         where.append("status = ?")
         params.append(status_filter)
+    if min_score > 0:
+        where.append("llm_score >= ?")
+        params.append(min_score)
     if search_query:
         where.append("(title LIKE ? OR company LIKE ? OR description LIKE ?)")
         like = f"%{search_query}%"
@@ -587,6 +605,7 @@ def dashboard():
         TEMPLATE,
         jobs=jobs, stats=stats_items, filters=filter_links,
         current_status=status_filter, search_query=search_query,
+        min_score=min_score,
         page=page, total_pages=total_pages,
         now=datetime.now().strftime("%d/%m/%Y %H:%M"),
         ai_provider=ai_provider,
