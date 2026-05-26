@@ -1,7 +1,9 @@
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional
+import time
+import re
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from dotenv import load_dotenv
 from db_client import _get_connection, update_job
 from config_loader import get_config
@@ -11,6 +13,68 @@ import sqlite3  # ← FIX: needed for row_factory in get_jobs_to_evaluate()
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# ── Rate Limit Handling ──
+
+# Default token budgets per provider per minute (free tiers)
+PROVIDER_LIMITS = {
+    "groq": {"tpm": 6000, "model": "llama-3.1-8b-instant"},
+    "gemini": {"tpm": 1_000_000},  # effectively unlimited
+    "deepseek": {"tpm": 500_000},
+    "openai": {"tpm": 200_000},
+    "claude": {"tpm": 200_000},
+}
+
+
+def parse_retry_after(error_msg: str) -> Optional[float]:
+    """Extract retry-after seconds from Groq 429 error messages."""
+    # "Please try again in 160ms."
+    m = re.search(r'try again in ([\d.]+)\s*(ms|s|milliseconds|seconds)', error_msg, re.IGNORECASE)
+    if m:
+        value = float(m.group(1))
+        unit = m.group(2).lower()
+        if unit in ("ms", "milliseconds"):
+            return value / 1000.0
+        return value
+    return None
+
+
+def call_with_retry(
+    fn: Callable, job_title: str, max_retries: int = 5, base_delay: float = 5.0
+) -> Optional[Dict[str, Any]]:
+    """Call an evaluation function with exponential backoff on 429 errors."""
+    import openai
+
+    for attempt in range(max_retries + 1):
+        try:
+            return fn()
+        except openai.RateLimitError as e:
+            error_text = str(e)
+            retry_in = parse_retry_after(error_text)
+
+            if retry_in:
+                wait = retry_in + 2.0  # add a small buffer
+                logger.warning(
+                    f"   ⏳ Rate limit per '{job_title}'. Attendo {wait:.1f}s "
+                    f"(tentativo {attempt + 1}/{max_retries + 1})"
+                )
+                time.sleep(wait)
+            else:
+                # Exponential backoff
+                wait = base_delay * (2 ** attempt)
+                logger.warning(
+                    f"   ⏳ Rate limit per '{job_title}'. Backoff {wait:.0f}s "
+                    f"(tentativo {attempt + 1}/{max_retries + 1})"
+                )
+                time.sleep(wait)
+
+        except Exception as e:
+            # Non-rate-limit error — log and give up
+            logger.error(f"   ❌ Errore per '{job_title}': {e}")
+            return None
+
+    logger.error(f"   ❌ Troppi tentativi per '{job_title}'. Salto.")
+    return None
 
 # ── AI Provider Registry ──
 
@@ -66,23 +130,18 @@ def build_evaluation_prompt(job: Dict[str, Any]) -> str:
 
 **Simone's Profile:**
 - Background: 3 years Help Desk IT support, Python automation, MySQL, networking
-- Certifications: Google Cybersecurity Professional Certificate, Google IT Support
-- Skills: Python, Django, Node.js, Linux, Active Directory, pfSense, networking
+- Certifications: Google Cybersecurity & IT Support Professional
+- Skills: Python, Django, Node.js, Linux, AD, pfSense
 - Languages: Italian (native), English (B2)
-- Seeking: Entry-level / junior positions
-- Open to: part-time (ideal), full-time (also fine if other criteria are strong)
-- Interests: Cybersecurity, AI/vibe coding, Python/automation development
+- Seeking: Entry-level / junior — IT, Cybersecurity, AI/Python
+- Open to: part-time (ideal) or full-time
 
 **Job to evaluate:**
 Title: {job['title']}
 Company: {job['company']}
 {salary_info}{location_info}{remote_info}{pt_info}
-Description:
-{job['description']}
-
-**IMPORTANT — These rules apply to ALL jobs regardless of source (LinkedIn, Remotive, Arbeitnow, etc.).**
-
-**Language:** The job may be in Italian, English, German, or other languages. Do NOT penalize based on language — Simone has B2 English.
+Description (truncated):
+{job['description'][:1200]}
 
 **CRITICAL RULES — Location & Role Type:**
 
@@ -96,37 +155,22 @@ Rule B — IT / Cybersecurity / Technical roles (everything else):
   → On-site in Italy is acceptable but scores lower on remote criterion.
   → On-site abroad is penalized unless exceptional.
 
-**Scoring (0-100 total) — follow this guide carefully:**
+**Scoring (0-100 total):**
 
-1. Career match (0-20 points)
-   Cybersecurity, AI/vibe coding, Python/AI development → 15-20
-   IT Support, networking, sysadmin → 8-14
-   Other fields → 0-7
+1. Career match (0-20): Cybersecurity/AI/Python dev → 15-20, IT Support → 8-14, other → 0-7
+2. Entry-level friendly (0-15): truly junior/trainee? Score accordingly.
+3. Remote work (0-15): full remote → 12-15, hybrid Italy → 8-11, on-site Italy → 4-7, on-site abroad → 0-3
+4. Part-time factor — SETS THE CEILING:
+   Clearly part-time (+30 to +35) → can reach 90-100
+   Not specified (+15 to +20) → realistic max 70-75
+   Clearly full-time (+5 to +10) → realistic max 55-65
+5. Language bonus (0-10): Italian or English → bonus
+6. Red flags: subtract 0-10 if ambiguous/scammy/unrealistic
 
-2. Entry-level / junior friendly (0-15 points)
-   Is it truly for juniors, trainees, or interns? Score accordingly.
-
-3. Remote work (0-15 points)
-   Full remote worldwide → 12-15
-   Remote Italy / hybrid Italy → 8-11
-   On-site Italy → 4-7
-   On-site abroad → 0-3
-
-4. Part-time factor (THIS IS THE KEY DIFFERENTIATOR — sets the ceiling):
-   Clearly part-time documented (+30 to +35) — this job can reach 90-100 total
-   Not specified or unclear (+15 to +20) — realistic maximum around 70-75
-   Clearly full-time (+5 to +10) — realistic maximum around 55-65
-
-5. Language bonus (0-10 points)
-   Job is in Italian or English → bonus (Simone is comfortable in both)
-   Other language only → no bonus (but no penalty)
-
-6. Red flags: subtract 0-10 if listing is ambiguous, scammy, or unrealistic
-
-**REALISTIC MAXIMUMS by work schedule (use these as a sanity check):**
-- Part-time job, strong in all criteria → 90-100
-- Part-time not specified, strong in other criteria → 65-75
-- Full-time, strong in other criteria → 55-65
+**REALISTIC MAXIMUMS:**
+- Part-time, strong criteria → 90-100
+- Part-time not specified, strong → 65-75
+- Full-time, strong → 55-65
 - Poor match → 0-40
 
 Return ONLY a valid JSON object:
@@ -187,10 +231,11 @@ def evaluate_with_deepseek(client: Any, job: Dict[str, Any]) -> Optional[Dict[st
 
 
 def evaluate_with_openai(client: Any, job: Dict[str, Any], model: str = "gpt-4o-mini") -> Optional[Dict[str, Any]]:
-    """Evaluate using OpenAI-compatible API."""
+    """Evaluate using OpenAI-compatible API with rate limit retry."""
     prompt = build_evaluation_prompt(job)
-    try:
-        response = client.chat.completions.create(
+    
+    def _call():
+        return client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a career coach evaluating job listings. Return ONLY valid JSON."},
@@ -198,12 +243,50 @@ def evaluate_with_openai(client: Any, job: Dict[str, Any], model: str = "gpt-4o-
             ],
             temperature=0.2,
         )
-        if response.choices:
-            return json.loads(response.choices[0].message.content)
-        return None
-    except Exception as e:
-        logger.error(f"OpenAI evaluation failed for {job['system_id']}: {e}")
-        return None
+    
+    result = call_with_retry(_call, job['title'])
+    if result and result.choices:
+        try:
+            return json.loads(result.choices[0].message.content)
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.error(f"   ❌ JSON parse error per '{job['title']}': {e}")
+            return None
+    return None
+
+
+def evaluate_with_groq(client: Any, job: Dict[str, Any], model: str = "llama-3.1-8b-instant") -> Optional[Dict[str, Any]]:
+    """Evaluate using Groq with rate limit handling and pacing between jobs."""
+    prompt = build_evaluation_prompt(job)
+    
+    # Stima token per pacing: ~4 chars = 1 token
+    estimated_tokens = len(prompt) // 4
+    provider_limit = PROVIDER_LIMITS.get("groq", {}).get("tpm", 6000)
+    min_pause = max(15.0, (estimated_tokens / provider_limit) * 60)
+    
+    logger.info(f"   Groq: ~{estimated_tokens} token stimati, pausa {min_pause:.0f}s tra job")
+    
+    def _call():
+        return client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a career coach evaluating job listings. Return ONLY valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+        )
+    
+    result = call_with_retry(_call, job['title'])
+    if result and result.choices:
+        try:
+            parsed = json.loads(result.choices[0].message.content)
+            # Pacing prima di tornare — il prossimo job aspetterà
+            logger.info(f"   ⏱ Pacing {min_pause:.0f}s prima del prossimo job Groq...")
+            time.sleep(min_pause)
+            return parsed
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.error(f"   ❌ JSON parse error per '{job['title']}': {e}")
+            return None
+    return None
 
 
 def evaluate_with_claude(client: Any, job: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -260,10 +343,7 @@ def get_evaluator(provider: str):
             api_key=api_key,
             base_url="https://api.groq.com/openai/v1"
         )
-        # Usa evaluate_with_openai passando il modello Groq
-        def _evaluate(client_arg, job):
-            return evaluate_with_openai(client, job, model="llama-3.1-8b-instant")
-        return _evaluate, client
+        return evaluate_with_groq, client
 
     elif provider == "openai":
         import openai
