@@ -218,7 +218,7 @@ conn.close()
 
 ---
 
-## 🤝 Per il tuo amico (fork personale)
+## 🤝 Fork personale o clone
 
 Se qualcuno fork/clona questo repo:
 
