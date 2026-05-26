@@ -7,6 +7,11 @@ source venv/bin/activate
 echo "🤖 Job Pipeline — $(date '+%d/%m/%Y %H:%M')"
 echo ""
 
+# ── Load secrets from .env (non in git — password email, API keys) ──
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
 # ── Step 1: Remotive API ──
 echo "─── Step 1: Remotive API ───"
 python -c "
@@ -25,12 +30,10 @@ from ingest_arbeitnow import run as a; a()
 
 echo ""
 
-# ── Step 3: LinkedIn scrape ──
+# ── Step 3: LinkedIn scrape (keyword e location dal config YAML) ──
 echo "─── Step 3: LinkedIn Scrape ───"
-python execution/ingest_linkedin.py \
-  --keywords "guardia giurata,cybersecurity,sicurezza informatica,vigilanza,portierato,soc analyst,junior security,IT security,penetration testing" \
-  --locations "Brescia,Italy" \
-  --max-jobs 8 --max-total 30 2>&1
+timeout 300 python execution/ingest_linkedin.py \
+  --max-jobs 8 --max-total 30 2>&1 || echo "⚠️ LinkedIn scrape non completato (timeout 300s)"
 
 echo ""
 
@@ -52,9 +55,8 @@ from llm_evaluator import run_evaluation; run_evaluation()
 
 echo ""
 
-# ── Step 6: Email notification ──
+# ── Step 6: Email notification (password da .env) ──
 echo "─── Step 6: Email Notification ───"
-export EMAIL_PASSWORD="CHANGE_ME"
 python execution/email_notifier.py 2>&1
 
 echo ""

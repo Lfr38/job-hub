@@ -22,7 +22,7 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 EMAIL_FROM = "hermnexus@gmail.com"
 EMAIL_TO = "simone.ronchi01@outlook.com"
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "CHANGE_ME")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 DASHBOARD_URL = "http://192.168.2.102:8080"
 
 

@@ -31,11 +31,31 @@ logger = logging.getLogger("LinkedInScraper")
 
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "linkedin_cookies.json")
 
-DEFAULT_KEYWORDS = [
-    "cybersecurity", "sicurezza informatica", "guardia giurata",
-    "vigilanza", "soc analyst", "junior security", "portierato",
-    "penetration testing",
-]
+_CONFIG = None  # lazy-loaded
+
+def _keywords_from_config():
+    """Read LinkedIn keywords from job_search_config.yaml."""
+    global _CONFIG
+    if _CONFIG is None:
+        _CONFIG = load_config()
+    kw = _CONFIG.get("sources", {}).get("linkedin", {}).get("keywords", [])
+    return kw if kw else [
+        "cybersecurity", "sicurezza informatica", "guardia giurata",
+        "vigilanza", "soc analyst", "junior security", "portierato",
+        "penetration testing",
+    ]
+
+
+def _locations_from_config():
+    """Read locations from config: local zone + 'Italy' fallback."""
+    global _CONFIG
+    if _CONFIG is None:
+        _CONFIG = load_config()
+    local = _CONFIG.get("search", {}).get("local", {})
+    roles = local.get("roles", [])
+    location = local.get("location", "Brescia")
+    # Return location + Italy, with local role keywords for deeper scraping
+    return [location, "Italy"]
 
 
 def load_cookies(path=COOKIES_FILE):
@@ -133,9 +153,9 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
                     max_jobs=8, max_total=30, dry_run=False):
     """Main scraper with authentication."""
     if keywords is None:
-        keywords = DEFAULT_KEYWORDS
+        keywords = _keywords_from_config()
     if locations is None:
-        locations = ["Brescia", "Italy"]
+        locations = _locations_from_config()
     
     all_jobs = []
     seen_urls = set()
@@ -339,8 +359,8 @@ def main():
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    keywords = args.keywords.split(',') if args.keywords else None
-    locations = args.locations.split(',') if args.locations else None
+    keywords = args.keywords.split(',') if args.keywords else _keywords_from_config()
+    locations = args.locations.split(',') if args.locations else _locations_from_config()
     
     cookies = load_cookies(args.cookies)
     if not cookies:

@@ -141,8 +141,8 @@ sources:
       - junior security
       - IT security
       - guardia giurata
-      - portierato
-      - vigilanza
       - penetration testing
+      - vigilanza
+      - portierato
     # tinyfish:  # Da abilitare quando serve LinkedIn/Indeed
   #   enabled: false
