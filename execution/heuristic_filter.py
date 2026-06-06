@@ -55,10 +55,17 @@ def calculate_heuristic_score(
     desc_lower = description.lower()
     text_to_search = f"{title_lower} {desc_lower}"
 
-    # ── Negative keywords check (instant reject) ──
+    # ── Negative keywords check (word-boundary match, non substring) ──
     negative_kws = search.get("negative_keywords", [])
     for kw in negative_kws:
-        if kw.lower() in text_to_search:
+        # \b word boundary previene match parziali:
+        #   "principal" non matcha "principali"
+        #   "lead" non matcha "leading"
+        #   "senior" non matcha "seniority"
+        #   "director" non matcha "directory"
+        #   "+" escaped via re.escape; "5+ years" matcha "5+ years" ma non "5 years"
+        pattern = r'\b' + re.escape(kw.lower()) + r'\b'
+        if re.search(pattern, text_to_search):
             return -1, "filtered_reject", {"reason": f"negative keyword: {kw}"}
 
     # ── Part-time check ──

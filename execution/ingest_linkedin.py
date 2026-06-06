@@ -102,12 +102,19 @@ def extract_job_from_page(page, url):
     """Navigate to a single job page and extract all details."""
     try:
         page.goto(url, wait_until='domcontentloaded', timeout=15000)
-        time.sleep(1)
+        time.sleep(2)  # Attendi redirect JS (LinkedIn può reindirizzare tardi)
         
-        # Se LinkedIn mostra la pagina di login/signup, skippa
-        page_text = page.evaluate("document.body.innerText.substring(0, 200)")
-        if 'Iscriviti a LinkedIn' in page_text or 'Iscriviti' in page_text[:100]:
-            logger.debug(f"   ⏭ Pagina login per {url.split('/')[-1][:30]}")
+        # Controllo URL: se LinkedIn ci ha portato a login/signup, skippa
+        current_url = page.url
+        if any(x in current_url for x in ('/login', '/signup', '/checkpoint', 'authwall')):
+            logger.debug(f"   ⏭ URL login: {current_url[:80]}")
+            return None
+        
+        # Controllo testo: fallback per pagine che non cambiano URL
+        page_text = page.evaluate("document.body.innerText.substring(0, 300)")
+        login_markers = ['Iscriviti a LinkedIn', 'Join LinkedIn', 'Sign in', 'Welcome to your professional community']
+        if any(marker.lower() in page_text.lower() for marker in login_markers):
+            logger.debug(f"   ⏭ Pagina login/signup per {url.split('/')[-1][:30]}")
             return None
         
         info = page.evaluate('''() => {
