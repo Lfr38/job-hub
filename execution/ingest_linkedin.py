@@ -58,6 +58,14 @@ def _locations_from_config():
     return [location, "Italy"]
 
 
+def _get_max_pages():
+    """Read max_pages from config (default 2)."""
+    global _CONFIG
+    if _CONFIG is None:
+        _CONFIG = load_config()
+    return _CONFIG.get("sources", {}).get("linkedin", {}).get("max_pages", 2)
+
+
 def load_cookies(path=COOKIES_FILE):
     if not os.path.exists(path):
         logger.error(f"Cookie file not found: {path}")
@@ -75,10 +83,22 @@ def load_cookies(path=COOKIES_FILE):
 
 
 def get_job_urls(page, keyword, location):
-    """Extract unique job URLs from LinkedIn search results page."""
+    """Extract unique job URLs from LinkedIn search results page.
+    Scrolls to load infinite-scroll results before extracting."""
     try:
         page.wait_for_selector('a[href*="/jobs/view/"]', timeout=10000)
         time.sleep(1)
+        
+        # Scroll per caricare più risultati (LinkedIn usa infinite scroll)
+        prev_count = 0
+        for scroll_pass in range(4):
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(1.5)
+            # Conta i link visibili per capire se ci sono nuovi risultati
+            current = page.evaluate("document.querySelectorAll('a[href*=\"/jobs/view/\"]').length")
+            if current == prev_count:
+                break  # Nessun nuovo risultato — smetti di scrollare
+            prev_count = current
         
         urls = page.evaluate('''() => {
             const links = document.querySelectorAll('a[href*="/jobs/view/"]');
@@ -92,6 +112,7 @@ def get_job_urls(page, keyword, location):
                 });
         }''')
         
+        logger.debug(f"   📜 {len(urls)} URL dopo scroll")
         return urls
     except Exception as e:
         logger.warning(f"   Errore estrazione URL: {e}")
@@ -211,96 +232,116 @@ def scrape_linkedin(cookies, keywords=None, locations=None, max_pages=1,
                 context.add_cookies(cookies)
                 page = context.new_page()
             
-            # Raccolta URL dalla pagina di ricerca
-            search_url = f"https://www.linkedin.com/jobs/search/?keywords={keyword.replace(' ', '%20')}&location={location.replace(' ', '%20')}&position=1&pageNum=0"
-            
-            logger.info(f"🔎 [{keyword}] @ {location}")
-            
-            try:
-                page.goto(search_url, wait_until='domcontentloaded', timeout=15000)
-                time.sleep(1)
+            # Raccolta URL dalla pagina di ricerca (multi-pagina con scroll)
+            all_keyword_urls = []
+            for page_num in range(max_pages):
+                start = page_num * 25
+                search_url = (
+                    f"https://www.linkedin.com/jobs/search/?"
+                    f"keywords={keyword.replace(' ', '%20')}"
+                    f"&location={location.replace(' ', '%20')}"
+                    f"&position=1&pageNum=0&start={start}"
+                )
                 
-                # Rifiuta cookie se compaiono
+                logger.info(f"🔎 [{keyword}] @ {location} (pagina {page_num+1}/{max_pages})")
+                
                 try:
-                    reject = page.query_selector('button:has-text("Rifiuta")')
-                    if reject and reject.is_visible():
-                        reject.click()
-                        time.sleep(0.3)
-                except:
-                    pass
-                
-                urls = get_job_urls(page, keyword, location)
-                
-                # Filtra già visti
-                new_urls = [u for u in urls if u not in seen_urls]
-                for u in new_urls:
-                    seen_urls.add(u)
-                
-                logger.info(f"   {len(urls)} job trovati, {len(new_urls)} nuovi")
-                
-                # Estrai dettagli dai primi N job (rispetta il limite totale)
-                remaining = max_total - total_new
-                to_extract = new_urls[:min(max_jobs, remaining)]
-                for idx, job_url in enumerate(to_extract):
-                    try:
-                        data = extract_job_from_page(page, job_url)
-                        if not data:
-                            continue
-                    except Exception as e:
-                        # Se il browser crashat, riavvia e riprova
-                        if 'EPIPE' in str(e) or 'Target closed' in str(e):
-                            logger.warning(f"   ⚠️ Browser crash — riavvio...")
-                            try:
-                                page.close()
-                                browser.close()
-                            except:
-                                pass
-                            browser = _pw.chromium.launch(
-                                headless=True,
-                                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-                            )
-                            context = browser.new_context(
-                                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
-                                viewport={'width': 1920, 'height': 1080},
-                                locale='it-IT',
-                            )
-                            context.add_cookies(cookies)
-                            page = context.new_page()
-                            # Riprova
-                            try:
-                                data = extract_job_from_page(page, job_url)
-                                if not data:
-                                    continue
-                            except Exception as e2:
-                                logger.warning(f"   ⚠️ Riprovato fallito: {e2}")
-                                continue
-                        else:
-                            logger.debug(f"   Errore estrazione: {e}")
-                            continue
+                    page.goto(search_url, wait_until='domcontentloaded', timeout=15000)
+                    time.sleep(2)  # LinkedIn carica lentamente
                     
-                    # Pulisci località (formato LinkedIn: "Brescia, Lombardia · 2 settimane fa")
-                    loc_raw = data.get('location', '')
-                    loc_clean = loc_raw.split('·')[0].strip() if '·' in loc_raw else loc_raw
+                    # Rifiuta cookie se compaiono (solo prima pagina)
+                    if page_num == 0:
+                        try:
+                            reject = page.query_selector('button:has-text("Rifiuta")')
+                            if reject and reject.is_visible():
+                                reject.click()
+                                time.sleep(0.3)
+                        except:
+                            pass
                     
-                    job_entry = {
-                        'title': data.get('title', ''),
-                        'company': data.get('company', ''),
-                        'location': loc_clean,
-                        'description': data.get('desc', ''),
-                        'salary': data.get('salary', ''),
-                        'url': job_url,
-                        'keyword': keyword,
-                        'search_location': location,
-                        'source': 'linkedin',
-                    }
-                    all_jobs.append(job_entry)
-                    total_new += 1
+                    page_urls = get_job_urls(page, keyword, location)
+                    all_keyword_urls.extend(page_urls)
                     
-                    if (idx + 1) % 5 == 0:
-                        logger.info(f"   ... {idx+1}/{len(to_extract)}")
+                    # Se la pagina non ha risultati, smetti
+                    if len(page_urls) == 0:
+                        break
+                        
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Pagina {page_num+1} fallita: {e}")
+                    continue
             
-            except Exception as e:
-                logger.warning(f"   ⚠️ Errore: {e}")
+            urls = all_keyword_urls
+            
+            # Filtra già visti
+            new_urls = [u for u in urls if u not in seen_urls]
+            for u in new_urls:
+                seen_urls.add(u)
+            
+            logger.info(f"   {len(urls)} job trovati, {len(new_urls)} nuovi")
+            
+            if not new_urls:
+                continue
+            
+            # Estrai dettagli dai primi N job (rispetta il limite totale)
+            remaining = max_total - total_new
+            to_extract = new_urls[:min(max_jobs, remaining)]
+            for idx, job_url in enumerate(to_extract):
+                try:
+                    data = extract_job_from_page(page, job_url)
+                    if not data:
+                        continue
+                except Exception as e:
+                    # Se il browser crashat, riavvia e riprova
+                    if 'EPIPE' in str(e) or 'Target closed' in str(e):
+                        logger.warning(f"   ⚠️ Browser crash — riavvio...")
+                        try:
+                            page.close()
+                            browser.close()
+                        except:
+                            pass
+                        browser = _pw.chromium.launch(
+                            headless=True,
+                            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+                        )
+                        context = browser.new_context(
+                            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+                            viewport={'width': 1920, 'height': 1080},
+                            locale='it-IT',
+                        )
+                        context.add_cookies(cookies)
+                        page = context.new_page()
+                        # Riprova
+                        try:
+                            data = extract_job_from_page(page, job_url)
+                            if not data:
+                                continue
+                        except Exception as e2:
+                            logger.warning(f"   ⚠️ Riprovato fallito: {e2}")
+                            continue
+                    else:
+                        logger.debug(f"   Errore estrazione: {e}")
+                        continue
+                
+                # Pulisci località (formato LinkedIn: "Brescia, Lombardia · 2 settimane fa")
+                loc_raw = data.get('location', '')
+                loc_clean = loc_raw.split('·')[0].strip() if '·' in loc_raw else loc_raw
+                
+                job_entry = {
+                    'title': data.get('title', ''),
+                    'company': data.get('company', ''),
+                    'location': loc_clean,
+                    'description': data.get('desc', ''),
+                    'salary': data.get('salary', ''),
+                    'url': job_url,
+                    'keyword': keyword,
+                    'search_location': location,
+                    'source': 'linkedin',
+                }
+                all_jobs.append(job_entry)
+                total_new += 1
+                
+                if (idx + 1) % 5 == 0:
+                    logger.info(f"   ... {idx+1}/{len(to_extract)}")
             
             time.sleep(0.3)
     
@@ -378,6 +419,7 @@ def main():
     
     jobs = scrape_linkedin(
         cookies=cookies, keywords=keywords, locations=locations,
+        max_pages=_get_max_pages(),
         max_jobs=args.max_jobs, max_total=args.max_total, dry_run=args.dry_run
     )
     
