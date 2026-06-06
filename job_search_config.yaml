@@ -14,18 +14,31 @@ ai:
 search:
   # Ruoli che cerchiamo (match sul titolo dell'annuncio)
   target_roles:
+    # Cybersecurity
     - cybersecurity
     - security analyst
     - security engineer
     - penetration tester
     - soc analyst
-    - python developer
-    - python programmer
+    - it security
+    # AI & LLM
     - ai developer
     - ai engineer
     - machine learning
+    - ml engineer
+    - llm engineer
+    - prompt engineer
+    - nlp engineer
+    - deep learning
+    - generative ai
+    - ai agent
+    # Development
+    - python developer
+    - python programmer
     - backend developer
     - full stack developer
+    - software engineer
+    # Support
     - it support
     - help desk
     - technical support
@@ -38,8 +51,14 @@ search:
     - ai
     - artificial intelligence
     - machine learning
+    - llm
+    - langchain
+    - prompt
+    - agent
     - django
     - fastapi
+    - docker
+    - kubernetes
 
   # Keyword da escludere (match su titolo + descrizione)
   negative_keywords:
@@ -144,5 +163,20 @@ sources:
       - penetration testing
       - vigilanza
       - portierato
-    # tinyfish:  # Da abilitare quando serve LinkedIn/Indeed
-  #   enabled: false
+      - llm engineer
+      - ai developer
+      - prompt engineer
+      - machine learning
+      - python developer
+  remoteok:
+    enabled: true
+    # Attribution required: link back to RemoteOK (https://remoteok.com)
+    tags:
+      - python
+      - ai
+      - machine-learning
+      - cybersecurity
+      - llm
+      - devops
+      - security
+      - generative-ai

@@ -20,6 +20,16 @@ from ingest_remotive import run as r; r()
 " 2>&1 | grep -v "Starting\|Database ready\|^$" || true
 
 echo ""
+echo ""
+
+# ── Step 1.5: RemoteOK API ──
+echo "─── Step 1.5: RemoteOK API ───"
+python -c "
+import sys; sys.path.insert(0, 'execution')
+from ingest_remoteok import run as rok; rok()
+" 2>&1 | grep -v "Starting\|Database ready\|^$" || true
+
+echo ""
 
 # ── Step 2: Arbeitnow API ──
 echo "─── Step 2: Arbeitnow API ───"
